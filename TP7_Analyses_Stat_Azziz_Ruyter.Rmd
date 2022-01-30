@@ -1,0 +1,378 @@
+---
+title: "TP IHM - Analyses Statistiques"
+author: "Azziz Otman, Ruyter Swann"
+date: "1/25/2022"
+output:
+  html_document:
+    df_print: paged
+---
+
+## Importation des packages
+
+```{r}
+library(readxl)
+library(bestNormalize)
+library(ggplot2)
+library(tidyverse) # metapackage of all tidyverse packages
+library(afex)       # for aov_ez()
+library(parallel)   # for parLapply()
+library(ggplot2)
+library(dplyr)
+library(viridis)
+
+```
+
+
+## Importation des données
+
+```{r}
+data_copie = read.csv('data.csv', sep=',')
+head(data_copie)
+```
+
+
+```{r}
+# Fonction qui sélectionne les participants
+extraction = function(data) { 
+  ech = data.frame()
+  liste = c(41, 26, 35, 40, 16, 9, 13, 38, 2, 58, 1, 60, 54, 11, 56, 37, 20, 51, 12, 29, 47, 15, 45, 4, 3, 43, 23, 59, 14, 18)
+  
+  for (j in 1:1080){
+    for (i in liste){
+      if (data["ParticipantID"][j, 1] == i){
+
+        ech = rbind(ech, data[j,])
+      }
+    }
+  }
+  return (ech)
+}
+```
+
+
+## Analyses statistiques
+
+### Distribution des données
+
+#### Standardisation
+Les données sont ici normalisées par la transformation Yeo-Johnson (Yeo, 2000), qui fait partie des transformées de puissances (Box-Cox, Laplace). Elle permet une transformation non-linéaire des données en stabilisant la variance, approchant les distributions en distributions normales par réduction de l’asymétrie. Cette transformation permet d'améliorer la validité des mesure mais rend l'interprétabilité plus difficile (moins intuitive en tout cas). 
+
+```{r}
+norm = function(data) { 
+  
+  coln=colnames(data) #mettre noms colonnes dans liste
+  ncol=length(coln) #taille liste
+  ndata=dim(data)[1] #taille dataframe
+  df2=apply(data,2, yeojohnson) #transformation des données
+  
+  #adaptation dataframe
+  resdata=NULL
+  for (j in ncol){
+    for (i in 1:ncol){
+      #print(data[[i]])
+      c=c(df2[[i]][["x.t"]])
+      #print(c)
+      resdata=cbind(resdata, c)
+    }
+  }
+  
+  colnames(resdata)=c(coln) #renommer colonnes
+  data=as.data.frame(resdata)
+  
+}
+
+# Execution des deux fonctions 
+echantillon = extraction(data_copie)
+data_numeric = subset(echantillon, select = c(erreurs, Keystrokes, Correct.words, wpm))
+data_cond = subset(echantillon, select = c(Condition1, Condition2, ParticipantID))
+data_norm1 = norm(data_numeric)
+data_norm = cbind(data_cond, data_norm1)
+data_norm_md = data_norm[which(data_norm["Condition2"]=="Main_dominante"),]
+```
+
+
+#### Visualisations générale
+
+```{r}
+# On stocke les jeux de données transformés dans les variables que l'on utilisera pour la suite
+data = data_norm
+data_MD = data_norm_md
+```
+
+
+```{r warning=FALSE}
+ggplot(data, aes(x=Condition1, y=erreurs, fill=Condition1)) +
+  geom_boxplot() +
+  ggtitle("Distributions des erreurs, condition 1 ")
+
+
+ggplot(data, aes(x=Condition2, y=erreurs, fill=Condition2)) +
+  geom_boxplot() +
+  ggtitle("Distributions des erreurs, condition 2")
+
+#####
+
+ggplot(data_MD, aes(x=Condition1, y=erreurs, fill=Condition1)) +
+  geom_boxplot() +
+  ggtitle("Main dominante - Distributions des erreurs, condition 1 ")
+
+
+```
+
+```{r warning=FALSE}
+ggplot(data, aes(x=Condition1, y=erreurs, fill=Condition1)) + 
+  geom_violin() + geom_jitter(height = 0, width = 0.1) +
+  ggtitle("Violinplot des erreurs, condition 1")
+
+ggplot(data, aes(x=Condition2, y=erreurs, fill=Condition2)) + 
+  geom_violin() + geom_jitter(height = 0, width = 0.1) +
+  ggtitle("Violinplot des erreurs, condition 2")
+```
+```{r warning=FALSE}
+ggplot(data, aes(x=Condition1, y=wpm, fill=Condition1)) +
+  geom_boxplot() +
+  ggtitle("Distribution des wpm, condition 1")
+
+ggplot(data, aes(x=Condition2, y=wpm, fill=Condition2)) +
+  geom_boxplot() +
+  ggtitle("Distribution des wpm, condition 2")
+```
+
+```{r warning=FALSE}
+ggplot(data, aes(x=Condition1, y=wpm, fill=Condition1)) + 
+  geom_violin() + geom_jitter(height = 0, width = 0.1) +
+  ggtitle("Violinplot des wpm, condition 1")
+
+ggplot(data, aes(x=Condition2, y=wpm, fill=Condition2)) + 
+  geom_violin() + geom_jitter(height = 0, width = 0.1) +
+  ggtitle("Violinplot des erreurs, condition 2")
+```
+#### Résumé des résultats
+
+L'objectif de ce TP est de quantifier l'influence des clavier prédictifs. Pour ce faire, il s'agit de comparer les résultats des différentes conditions expérimentales, soit : 
+- VI-1 : type de clavier selon 3 modalités (prédictif, simple, et gestuel)
+- VI-2 : main(s) utilisée(s) selon 2 modalités (main dominante ou deux mains).
+
+
+
+#### WPM
+Les résultats vont dans le même sens que le nombre d'erreurs. La condition deux mains montre davantage de variabilité dans les résultats (plus grande étendue)
+
+```{r}
+data$ParticipantID = factor(data$ParticipantID)
+
+data %>%
+  ggplot( aes(x=ParticipantID, y=wpm, fill=ParticipantID)) +
+    geom_boxplot() +
+    scale_fill_viridis(discrete = TRUE, alpha=0.6) +
+    geom_jitter(color="black", size=0.4, alpha=0.9) +
+    #theme_ipsum() +
+    theme(
+      legend.position="none",
+      plot.title = element_text(size=11)
+    ) +
+    ggtitle("Distribution des essais de chaque participant") +
+    xlab("")
+```
+Cette représentation est intéressante puisqu'elle permet une premier visualisation de la variabilité inter-sujet et intra-sujet. En effet, une grande étendue montre davantage d'hétérogénéité selon les résultats pour un même sujet, et un grand écart dans la distribution inter-sujet montre une variabilité plus importante entre individus selon les conditions expérimentales.
+Ici, les résultats semblent relativement homogènes, mais nous pouvons remarquer quelques valeurs abérantes pour le participant 16, 23 et 58. Il serait intéressant de réaliser des analyses plus poussées afin de potentiellement retirer des participants qui pourraient biaiser les analyses statistiques. 
+Nous pouvons néanmoins noter que la majorité des participants tapent entre 15 et 20 mots par minutes. 
+
+
+#### Erreurs
+
+Avant normalisation, les  résultats montraient une certaine équivalence entre la condition simple et gesture_Gboard, même si la condition simple amenaient à plus de variabilité. Pour la condition 2, il y a beaucoup plus d'erreurs à deux mains. D'après les violin plot, la condition predictive_board semblaient amener à davantage d'erreurs.
+Néanmoins, les données normalisées à présent sont davantage comparables entre elles mais nécessite des tests paramétriques.
+
+```{r}
+data %>%
+  ggplot( aes(x=ParticipantID, y=erreurs, fill=ParticipantID)) +
+    geom_boxplot() +
+    scale_fill_viridis(discrete = TRUE, alpha=0.6) +
+    geom_jitter(color="black", size=0.4, alpha=0.9) +
+    #theme_ipsum() +
+    theme(
+      legend.position="none",
+      plot.title = element_text(size=11)
+    ) +
+    ggtitle("Distribution des essais de chaque participant") +
+    xlab("")
+```
+La distribution des erreurs est beaucoup plus hétérogènes (grande étendue : de 1 à plus de 7 erreurs pour les données non normalisées). Ces résultats confirment la nécessité de faire des analyses entre conditions si nous voulons mettre en avant certaines tendances. 
+
+
+#### Visualisation de la normalité
+Il est important de fournir des indices visuels sur la distribution des données, particulièrement pour avoir un premier aperçu de si elles peuvent être rapprochées d'une loi normale ou non, afin de savoir si l'on peut appliquer des tests paramétriques.
+
+d
+```{r}
+ggplot(data, aes(x = erreurs)) + 
+    geom_histogram(aes(y =..density..), 
+                   bins=8, # or specify manually : breaks = seq(0, 60, by = 10), 
+                   colour = "white", fill="grey75")
+```
+
+```{r warning=FALSE}
+ggplot(data, aes(x=wpm)) + 
+  geom_histogram(aes(y=..density..), breaks = seq(-3, 3, by = 1), colour = "white", fill="grey75") + 
+  facet_wrap(~Condition1, scales = "free") +
+  geom_density(aes(y=..density..), colour="blue")  +
+  theme(aspect.ratio=2) + ggtitle("WPM - Condition 1")
+
+ggplot(data, aes(x=wpm)) + 
+  geom_histogram(aes(y=..density..), breaks = seq(-3, 3, by = 0.5), colour = "white", fill="grey75") + 
+  facet_wrap(~Condition2, scales = "free") +
+  geom_density(aes(y=..density..), colour="blue")  +
+  theme(aspect.ratio=2) + ggtitle("WPM - Condition 2 ")
+```
+
+```{r warning=FALSE}
+ggplot(data, aes(x=erreurs)) + 
+  geom_histogram(aes(y=..density..), bins=12, colour = "white", fill="grey75") + 
+  facet_wrap(~Condition1, scales = "free") +
+  geom_density(aes(y=..density..), colour="blue") +
+  theme(aspect.ratio=2) + ggtitle("Erreurs - Condition 1 ")
+
+ggplot(data, aes(x=erreurs)) + 
+  geom_histogram(aes(y=..density..), bins=12, colour = "white", fill="grey75") + 
+  facet_wrap(~Condition2, scales = "free") +
+  geom_density(aes(y=..density..), colour="blue") +
+  theme(aspect.ratio=2)+ ggtitle("Erreurs - Condition 2 ")
+```
+Nous pouvons simplement noter ici que le nombre d'erreurs est un indicateur intéressant pour soutenir des résultats mais est difficilement exploitable (ne suit pas vraiment un loi normale).
+
+##### Qqplot
+```{r warning=FALSE}
+qplot(sample = wpm, data = data, geom = "qq")
+qplot(sample = erreurs, data = data, geom = "qq")
+```
+Le nombre de mots par minute est également un meilleur indicateur (on peut tracer une droite et avoir peu d'erreurs) que les erreurs, qui sont discrètes. 
+
+```{r}
+ggplot(data) +
+        ggtitle("Evaluating normal distribution of speed") +
+        theme(plot.title = element_text(lineheight = .8, face = "bold")) +
+        stat_qq(aes(sample = erreurs, color = factor(Condition1)))
+
+ggplot(data) +
+        ggtitle("Evaluating normal distribution of speed") +
+        theme(plot.title = element_text(lineheight = .8, face = "bold")) +
+        stat_qq(aes(sample = erreurs, color = factor(Condition2)))
+```
+
+```{r}
+qqnorm(data$erreurs, main = "Normal Q-Q Plot for time")
+qqline(data$erreurs)
+
+qqnorm(data$wpm, main = "Normal Q-Q Plot for time")
+qqline(data$wpm)
+```
+
+### Tests
+
+#### Shapiro-wilk : test sur la normalité
+
+```{r}
+
+print("#### en prenant la condition 2 ")
+shapiro.test(data$erreurs)
+shapiro.test(data$Keystrokes)
+shapiro.test(data$wpm)
+
+
+```
+```{r}
+print("#### uniquement la main dominante")
+shapiro.test(data_MD$erreurs)
+shapiro.test(data_MD$Keystrokes)
+shapiro.test(data_MD$wpm)
+
+```
+
+```{r}
+print("#### uniquement les deux mains")
+data_2M = data_norm[which(data_norm["Condition2"] == "Deux_mains"),]
+shapiro.test(data_2M$erreurs)
+shapiro.test(data_2M$Keystrokes)
+shapiro.test(data_2M$wpm)
+```
+
+
+L'indicateur du nombre de caractères est le seul qui suit une loi normale. Nous allons quand même effectuer la suite des analyses sous l'hypothèse de normalité. Il faut dire que le test de Shapiro est un petit peu sévère.
+
+### Test de Student (t-test) deux-à-deux : test sur les différences de distribution
+
+```{r}
+t.test(data$erreurs[which(data["Condition1"]=="Gesture_Gboard")], data$erreurs[which(data["Condition1"]=="Simple")], paired = TRUE)
+```
+Il y a une différence significative à p < 0.05 mais ces résultats sont à prendre avec méfiance puisque la distribution de l'erreur n'est pas normale. Nous regarons donc avec keystrokes 
+
+```{r}
+t.test(data$Keystrokes[which(data["Condition1"]=="Gesture_Gboard")], data$Keystrokes[which(data["Condition1"]=="Simple")], paired = TRUE)
+```
+Il y a donc une différence significative entre la condition gestuelle et simple. Regardons donc pour la condition prédiction. 
+
+```{r}
+t.test(data$Keystrokes[which(data["Condition1"]=="Predictive_Gboard")], data$Keystrokes[which(data["Condition1"]=="Simple")], paired = TRUE)
+```
+Il y a également des différences significatives. Nous pouvons dès à présent rejeter l'hypothèse nulle qui soutient l'égalité des moyennes sur le nombre de caractères tapés selon le type de clavier. 
+
+```{r}
+t.test(data$Keystrokes[which(data["Condition1"]=="Predictive_Gboard")], data$Keystrokes[which(data["Condition1"]=="Gesture_Gboard")], paired = TRUE)
+```
+
+
+
+### Test sur plusieurs échantillons : Anova
+
+Les résultats suivant indiquent des différences signitifcatives à p < 0.05 pour la condition 1 (clavier gestuel, simple ou prédictif), ainsi que pour la condition 2 (main dominante, les deux mains), mais aucune interaction entre ces deux condition. Cela signifie que l'on utilise les deux mains ou une seule, qu'il y aura quand même des différences dans la condition 1. Nous pourrions faire deux t-test pour vérifier cela. 
+
+```{r}
+data$ParticipantID = factor(data$ParticipantID)
+# data$subject = factor(data$subject)
+```
+
+```{r warning=FALSE}
+results = afex::aov_ez(
+  data = data, 
+  id = 'ParticipantID', # subject id column
+  dv = 'erreurs', # dependent variable
+  within = c('Condition1', 'Condition2'), # within-subject independent variables
+  between = NULL ,# between-subject independent variables
+  fun_aggregate = mean, # average multiple repetitions together for each subject*condition
+  anova_table = list(es = 'ges') # effect size = generalized eta squared
+)
+results
+```
+
+Nous pouvons effectuer la même analyse pour le nombre de mots par minute. 
+
+```{r warning=FALSE}
+results = afex::aov_ez(
+  data = data, 
+  id = 'ParticipantID', # subject id column
+  dv = 'wpm', # dependent variable
+  within = c('Condition1', 'Condition2'), # within-subject independent variables
+  between = NULL ,# between-subject independent variables
+  fun_aggregate = mean, # average multiple repetitions together for each subject*condition
+  anova_table = list(es = 'ges') # effect size = generalized eta squared
+)
+results
+```
+
+Il y a ici des résultats intéressants puisque nous observons des différences significatives pour la condition 1 et 2 à p < 0.001, et également un effet d'interaction. Nous pouvons émettre l'hypothèse que cet nous écrivons plus rapidement dans une condition plutôt que l'autre. Le nombre de keystrokes devraient tendre à ce résultat aussi.
+
+```{r warning=FALSE}
+results = afex::aov_ez(
+  data = data, 
+  id = 'ParticipantID', # subject id column
+  dv = 'Keystrokes', # dependent variable
+  within = c('Condition1', 'Condition2'), # within-subject independent variables
+  between = NULL ,# between-subject independent variables
+  fun_aggregate = mean, # average multiple repetitions together for each subject*condition
+  anova_table = list(es = 'ges') # effect size = generalized eta squared
+)
+results
+```
+
+Et bien finalement non, il n'y a pas de différences significatives dans la condition 2 pour le nombre de caractères. Néanmoins, les résultats indiquent tout de même un effet d'interaction, donc ici, nous ne pouvons pas conclure à l'absence de différences selon le type de clavier. Nous pouvons rejeter l'hypothèse nulle, mais 
